@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package gatewaypb;
+
+service GatewayService {
+  rpc Serve(stream GatewayRequest) returns (stream GatewayResponse) {}
+}
+
+message GatewayRequest {
+  oneof MessageRequest {
+    LoginRequest loginRequest = 1;
+    PingpongData pingpongRequest = 2;
+    SubRequest subRequest = 3;
+    UnsubRequest unsubRequest = 4;
+    PubRequest pubRequest = 5;
+  }
+}
+
+message GatewayResponse {
+  oneof MessageResponse {
+    LoginResponse loginResponse = 1;
+    PingpongData pingpongResponse = 2;
+    PubResponse pubResponse = 3;
+  }
+}
+
+//login
+message LoginRequest {
+  string username = 1;
+  string password = 2; 
+}
+
+message LoginResponse {
+  enum Status {
+    SUCCESS = 0;
+    INCORRECT_ACCOUNT_PASSWD = 1;
+    AUTH_SERVER_MAINTAIN = 2;
+    MYSQL_MAINTAIN = 3;
+  }
+  Status status = 1;
+}
+
+//pingpong
+message PingpongData {
+  int32 size = 1;
+  bytes data = 2;
+}
+
+
+//pubsub
+message SubRequest {
+  string topic = 1;
+}
+
+message UnsubRequest {
+  string topic = 1;
+}
+
+message PubRequest {
+  string topic = 1;
+  bytes content = 2;
+}
+
+message PubResponse {
+  string topic = 1;
+  message Data {
+    bytes content = 1;
+    uint64 pubTime = 2;
+  }
+  repeated Data datas = 2;
+}

@@ -1,0 +1,9 @@
+auth/auth
+gateway/gateway
+game/game
+account/account
+mockclient/mockclient
+
+*.pem
+*.csr
+test

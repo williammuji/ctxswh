@@ -1,0 +1,26 @@
+syntax = "proto3";
+package loginpb;
+
+service LoginService {
+  rpc Serve (stream LoginRequest) returns (stream LoginResponse) {}
+}
+
+message LoginRequest {
+  oneof MessageRequest {
+    IpCount ipCount = 1;
+  }
+}
+
+message LoginResponse {
+  oneof MessageResponse{
+    Empty empty = 1;
+  }
+}
+
+message IpCount {
+  string ip = 1;
+  uint64 count = 2;
+}
+
+message Empty {
+}

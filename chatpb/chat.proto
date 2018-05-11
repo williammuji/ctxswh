@@ -1,0 +1,22 @@
+syntax = "proto3";
+package chatpb;
+
+import "ctxswh/gatewaypb/gateway.proto";
+
+service ChatService {
+  rpc Serve (stream ChatRequest) returns (stream ChatResponse) {}
+}
+
+message ChatRequest {
+  oneof MessageRequest {
+    gatewaypb.SubRequest subRequest = 1;
+    gatewaypb.UnsubRequest unsubRequest = 2;
+    gatewaypb.PubRequest pubRequest = 3;
+  }
+}
+
+message ChatResponse {
+  oneof MessageResponse {
+    gatewaypb.PubResponse pubResponse = 1;
+  }
+}

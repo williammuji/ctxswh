@@ -1,0 +1,20 @@
+syntax = "proto3";
+package gamepb;
+
+import "ctxswh/gatewaypb/gateway.proto";
+
+service GameService {
+  rpc Serve(stream GameRequest) returns (stream GameResponse) {}
+}
+
+message GameRequest {
+  oneof MessageRequest {
+    gatewaypb.PingpongData pingpongRequest = 1;
+  }
+}
+
+message GameResponse {
+  oneof MessageResponse {
+    gatewaypb.PingpongData pingpongResponse= 1;
+  }
+}

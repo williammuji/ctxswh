@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+
+set -e
+
+# cd 'ctxswh' dir
+cd "$(dirname "$0")"
+
+# check protobuf version
+# go get -u google.golang.org/grpc
+# go get -u github.com/golang/protobuf/{proto,protoc-gen-go}
+if [[ $(protoc --version) < "libprotoc 3.0.0" ]]; then
+	echo "could not find protoc version > 3.0.0, is it installed + in PATH?"
+	exit 1 
+fi
+
+# check cfssl
+command -v cfssl >/dev/null 2>&1 || { echo "cfssl not installed.  (https://github.com/cloudflare/cfssl#installation)" >&2; exit 1; }
+
+# check minikube 
+command -v minikube >/dev/null 2>&1 || { echo "minikube not installed.  (https://github.com/kubernetes/minikube)" >&2; exit 1; }
+
+# check minikube running
+MINIKUBE_STATUS=$(minikube status)
+echo ${MINIKUBE_STATUS}
+MINIKUBEVM_STATUS=$(echo ${MINIKUBE_STATUS} | cut -d' ' -f 2)
+LOCALKUBE_STATUS=$(echo ${MINIKUBE_STATUS} | cut -d' ' -f 4)
+if [[ "$MINIKUBEVM_STATUS" != "Running" || "$LOCALKUBE_STATUS" != "Running" ]]; then
+	# set docker env
+	# minikube start --vm-driver=virtualbox --docker-env HTTP_PROXY=http://192.168.99.1:8123 --docker-env HTTPS_PROXY=http://192.168.99.1:8123 --alsologtostderr --stderrthreshold=0
+	# for private registry
+	# minikube start --insecure-registry localhost:5000
+	# POD=$(kubectl get pods --namespace kube-system -l k8s-app=kube-registry -o template --template '{{range .items}}{{.metadata.name}} {{.status.phase}}{{"\n"}}{{end}}' | grep Running | head -1 | cut -f1 -d' ')
+	# kubectl port-forward --namespace kube-system $POD 5000:5000 &
+
+	minikube start
+fi	
+
+# check govendor
+# modify github.com/golang/glog/glog.go first for custom the time format
+command -v govendor >/dev/null 2>&1 || { echo "govendor not installed.  (go get -u github.com/kardianos/govendor)" >&2; exit 1; }
+govendor init
+govendor add +external
+
+
+CTXSWH_ROOT="${GOPATH}/src/github.com/williammuji"
+CTXSWH_PATH="${CTXSWH_ROOT}/ctxswh"
+
+# goimports
+goimports -w ${CTXSWH_PATH}
+
+# directories containing protos to be built
+DIRS="./gatewaypb ./authpb ./gamepb ./chatpb"
+for dir in ${DIRS}; do
+	pushd ${dir}
+	protoc --go_out=plugins=grpc,import_prefix=github.com/williammuji/:. -I=.:"${CTXSWH_ROOT}" *.proto
+	sed -i.bak -E "s/github\.com\/williammuji\/(github\.com|golang\.org|google\.golang\.org)/\1/g" *.pb.go
+	sed -i.bak -E 's/github\.com\/williammuji\/(errors|fmt|io)/\1/g' *.pb.go
+	sed -i.bak -E 's/import fmt \"fmt\"//g' *.pb.go
+	sed -i.bak -E 's/import _ \"github\.com\/williammuji\/google\/api\"//g' *.pb.go
+	rm -f *.bak
+	goimports -w *.pb.go
+	popd
+done
+
+# kubernetes cluster must be started
+# create gatewaytls mysqltls secret
+CERTS_DIRS="./gatewaytls ./mysqltls"
+for dir in ${CERTS_DIRS}; do
+	pushd ${dir}
+
+	# Create CA
+	cfssl gencert -initca config/cacsr.json | cfssljson -bare ca
+	# Generate server certs
+	cfssl gencert \
+		-ca=ca.pem \
+		-ca-key=ca-key.pem \
+		-config=config/caconfig.json \
+		-profile=server \
+		config/servercsr.json | cfssljson -bare server
+	# Generate client certs
+	cfssl gencert \
+		-ca=ca.pem \
+		-ca-key=ca-key.pem \
+		-config=config/caconfig.json \
+		-profile=client \
+		config/clientcsr.json | cfssljson -bare client
+
+	CERTS_DIR_NAME=$(echo ${dir} | cut -d'/' -f 2)
+
+	# delete secret ${CERTS_DIR_NAME}
+	kubectl delete secrets ${CERTS_DIR_NAME} || true
+
+	# require go get github.com/kelseyhightower/conf2kube
+	# create ${CERTS_DIR_NAME} Kubernetes secret
+	if [[ ${CERTS_DIR_NAME} == mysqltls ]]; then
+		conf2kube -n ${CERTS_DIR_NAME} -f client-key.pem -k client-key.pem | kubectl create -f -
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f client.pem -k client.pem`
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f ca.pem -k ca.pem`
+		# enable _mysql can read server-key.pem
+		chmod a+r server-key.pem
+	elif [[ ${CERTS_DIR_NAME} == gatewaytls ]]; then
+		conf2kube -n ${CERTS_DIR_NAME} -f server-key.pem -k server-key.pem | kubectl create -f -
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f server.pem -k server.pem`
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f ca.pem -k ca.pem`
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f client.pem -k client.pem`
+		kubectl patch secret ${CERTS_DIR_NAME} -p `conf2kube -n ${CERTS_DIR_NAME} -f client-key.pem -k client-key.pem`
+		# enable container gateway can read server-key.pem
+		chmod a+r server-key.pem
+		chmod a+r client-key.pem
+	fi
+
+	popd
+done
+
+
+# delete deployments
+DEPLOY_YAML="gateway/gatewaycontroller.yaml gateway/gateway.yaml auth/authcontroller.yaml auth/authservice.yaml game/gamecontroller.yaml game/gameservice.yaml chat/chatcontroller.yaml chat/chatservice.yaml account/accountcontroller.yaml client/clientpod.yaml"
+for f in ${DEPLOY_YAML}; do
+	kubectl delete -f ${f} || true
+done
+
+
+# start mysql server with SSL
+if [ "$(uname)" == "Darwin" ]; then
+	# sudo vi /Library/LaunchDaemons/com.oracle.oss.mysql.mysqld.plist
+	# <string>--ssl-ca=${CTXSWH_PATH}/mysqltls/ca.pem</string>
+	# <string>--ssl-cert=${CTXSWH_PATH}/mysqltls/server.pem</string>
+	# <string>--ssl-key=${CTXSWH_PATH}/mysqltls/server-key.pem</string>
+	sudo launchctl unload -F /Library/LaunchDaemons/com.oracle.oss.mysql.mysqld.plist
+	sudo launchctl load -F /Library/LaunchDaemons/com.oracle.oss.mysql.mysqld.plist
+	# sudo /usr/local/mysql/bin/mysqld --user=_mysql --basedir=/usr/local/mysql --datadir=/usr/local/mysql/data --plugin-dir=/usr/local/mysql/lib/plugin --log-error=/usr/local/mysql/data/mysqld.local.err --ssl-ca=${CTXSWH_PATH}/mysqltls/ca.pem --ssl-cert=${CTXSWH_PATH}/mysqltls/server.pem --ssl-key=${CTXSWH_PATH}/mysqltls/server-key.pem &
+elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
+	# sudo vi /etc/mysql/mysql.conf.d/mysqld.cnf
+	# [mysqld]
+	# ssl-ca=mysql-ca.pem
+	# ssl-cert=mysql-server-cert.pem
+	# ssl-key=mysql-server-key.pem
+	sudo cp ${CTXSWH_PATH}/mysqltls/ca.pem /var/lib/mysql/mysql-ca.pem
+	sudo cp ${CTXSWH_PATH}/mysqltls/server.pem /var/lib/mysql/mysql-server-cert.pem
+	sudo cp ${CTXSWH_PATH}/mysqltls/server-key.pem /var/lib/mysql/mysql-server-key.pem
+	sudo service mysql restart
+fi
+
+
+
+eval $(minikube docker-env)
+echo "minikube docker-env"
+
+
+# build docker image
+docker rmi -f ctxswh/account:1.0.0 ctxswh/client:1.0.0 ctxswh/game:1.0.0 ctxswh/gateway:1.0.0 ctxswh/auth:1.0.0 ctxswh/chat:1.0.0 || true
+
+
+# go build
+CGO_ENABLED=0 GOOS=linux go build -a -v -o gateway/gateway --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./gateway
+CGO_ENABLED=0 GOOS=linux go build -a -v -work -o auth/auth --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./auth
+CGO_ENABLED=0 GOOS=linux go build -a -v -o game/game --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./game
+CGO_ENABLED=0 GOOS=linux go build -a -v -o chat/chat --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./chat
+CGO_ENABLED=0 GOOS=linux go build -a -v -o account/account --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./account
+CGO_ENABLED=0 GOOS=linux go build -a -v -o client/client --ldflags '-extldflags "-static"' -tags netgo -installsuffix netgo ./client
+
+
+docker build --no-cache --rm -f auth/Dockerfile \
+	        -t ctxswh/auth:1.0.0 \
+		        auth/
+
+docker build --no-cache --rm -f gateway/Dockerfile \
+	        -t ctxswh/gateway:1.0.0 \
+		        gateway/
+
+docker build --no-cache --rm -f game/Dockerfile \
+	        -t ctxswh/game:1.0.0 \
+		        game/
+
+docker build --no-cache --rm -f chat/Dockerfile \
+	        -t ctxswh/chat:1.0.0 \
+		        chat/
+
+docker build --no-cache --rm -f client/Dockerfile \
+	        -t ctxswh/client:1.0.0 \
+		        client/
+
+# enable account container can read client-key.pem
+chmod a+r mysqltls/client-key.pem
+docker build --no-cache --rm -f account/Dockerfile \
+	        -t ctxswh/account:1.0.0 \
+		        account/
+

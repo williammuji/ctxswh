@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -e
+
+kubectl delete svc redis-sentinel
+kubectl delete rc redis-sentinel
+kubectl delete rc redis

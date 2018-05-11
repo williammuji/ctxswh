@@ -1,0 +1,26 @@
+{
+	"CN": "mysql.example.com",
+	"hosts": [
+		"127.0.0.1",
+		"192.168.99.1",
+		"192.168.3.3",
+		"192.168.98.170",
+		"172.17.0.1",
+		"72.18.0.1",
+		"mysql.example.com",
+		"mysql.default.svc.cluster.local"
+	],
+	"key": {
+		"algo": "rsa",
+		"size": 2048
+	},
+	"names": [
+		{
+			"C": "CN",
+			"L": "SJ",
+			"O": "MYSQL",
+			"OU": "mysqlserver",
+			"ST": "SH"
+		}
+	]
+}

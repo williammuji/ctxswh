@@ -1,0 +1,29 @@
+{
+	"CN": "gateway.example.com",
+	"hosts": [
+		"127.0.0.1",
+		"172.17.0.1",
+		"172.18.0.1",
+		"192.168.3.3",
+		"192.168.99.1",
+		"192.168.99.100",
+		"192.168.98.170",
+		"139.224.226.71",
+		"gateway",
+		"gateway.example.com",
+		"gateway.default.svc.cluster.local"
+	],
+	"key": {
+		"algo": "rsa",
+		"size": 2048
+	},
+	"names": [
+		{
+			"C": "CN",
+			"L": "SJ",
+			"O": "CTXSWH",
+			"OU": "GATEWAY",
+			"ST": "SH"
+		}
+	]
+}

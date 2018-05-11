@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+set -e
+
+kubectl create -f redis/yaml/redis-master.yaml
+sleep 1
+# Create a service to track the sentinels
+kubectl create -f redis/yaml/redis-sentinel-service.yaml
+# Create a replication controller for redis servers
+kubectl create -f redis/yaml/redis-controller.yaml
+# Create a replication controller for redis sentinels
+kubectl create -f redis/yaml/redis-sentinel-controller.yaml
+sleep 2
+# Scale both replication controllers
+kubectl scale rc redis --replicas=3
+kubectl scale rc redis-sentinel --replicas=3
+sleep 3
+# Delete the original master pod
+kubectl delete pods redis-master

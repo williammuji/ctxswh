@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: auth
+spec:
+  replicas: 1
+  selector:
+    app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+      - name: auth
+        image: ctxswh/auth:1.0.0
+        command:
+          - "/auth"
+        args:
+          - "-stderrthreshold=INFO"
+          - "-port=8101"
+          - "-debugPort=8102"
+          - "-dbHost=192.168.99.1"
+          #- "-dbHost=192.168.3.3"
+          - "-dbServerCACert=/mysqltls/ca.pem"
+          - "-dbClientCert=/mysqltls/client.pem"
+          - "-dbClientKey=/mysqltls/client-key.pem"
+        ports:
+          - name: grpc
+            containerPort: 8101 
+          - name: debug
+            containerPort: 8102
+        volumeMounts:
+          - name: "mysqltls"
+            readOnly: true
+            mountPath: "/mysqltls"
+      volumes:
+        - name: "mysqltls"
+          secret:
+            secretName: "mysqltls"

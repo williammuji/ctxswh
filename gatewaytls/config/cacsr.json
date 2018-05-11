@@ -1,0 +1,16 @@
+{
+	"CN": "gRPC CA",
+	"key": {
+		"algo": "rsa",
+		"size": 2048
+	},
+	"names": [
+	{
+		"C": "CN",
+		"L": "SJ",
+		"O": "CTXSWH",
+		"OU": "gRPC",
+		"ST": "SH"
+	}
+	]
+}

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: game
+spec:
+  replicas: 1
+  selector:
+    app: game
+  template:
+    metadata:
+      labels:
+        app: game
+    spec:
+      containers:
+      - name: game
+        image: ctxswh/game:1.0.0
+        command:
+          - "/game"
+        args:
+          - "-stderrthreshold=INFO"
+          - "-port=8201"
+          - "-debugPort=8202"
+        ports:
+          - name: grpc
+            containerPort: 8201 
+          - name: debug
+            containerPort: 8202

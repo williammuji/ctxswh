@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -e
+
+# cd 'ctxswh' dir
+cd "$(dirname "$0")"
+
+
+# logging
+# proxy for kibana
+# kubectl proxy --port=8003
+# http://127.0.0.1:8003/api/v1/proxy/namespaces/kube-system/services/kibana-logging
+
+# redis
+# kubectl exec -it redis-cc6tf redis-cli
+
+
+DEPLOY_YAML="login/logincontroller.yaml login/loginservice.yaml gateway/gatewaycontroller.yaml gateway/gatewayservice.yaml auth/authcontroller.yaml auth/authservice.yaml game/gamecontroller.yaml game/gameservice.yaml chat/chatcontroller.yaml chat/chatservice.yaml"
+
+kubectl delete -f client/clientpod.yaml || true
+
+for f in ${DEPLOY_YAML}; do
+	kubectl delete -f ${f} || true
+done

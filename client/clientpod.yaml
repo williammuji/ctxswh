@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod 
+metadata:
+  name: client
+  labels:
+    app: client
+  annotations:
+    pod.beta.kubernetes.io/init-containers: '[
+      {
+        "name": "init-gateway",
+        "image": "busybox",
+        "command": ["sh", "-c", "until nslookup gateway; do echo waiting for chat; sleep 2; done;"]
+      }
+    ]'
+spec:
+  restartPolicy: Never
+  containers:
+  - name: client
+    image: ctxswh/client:1.0.0
+    command:
+      - "/client"
+    args:
+      - "-stderrthreshold=INFO"
+      - "-gatewayServerAddr=gateway:8001"
+      - "-gatewayCaCert=/gatewaytls/ca.pem"
+      - "-gatewayClientCert=/gatewaytls/client.pem"
+      - "-gatewayClientKey=/gatewaytls/client-key.pem"
+      - "-user=testuser1:testuser2"
+      - "-passwd=testpasswd1:testpasswd2"
+      - "-secs=30"
+      - "-ppMsgSize=32"
+    volumeMounts:
+      - name: "gatewaytls"
+        readOnly: true
+        mountPath: "/gatewaytls"
+  volumes:
+    - name: "gatewaytls"
+      secret:
+        secretName: "gatewaytls"
